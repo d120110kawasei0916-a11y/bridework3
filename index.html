@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BridgeWork｜人材紹介会社向け 求人管理ツール</title>
+  <script src="https://cdn.tailwindcss.com" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@18/umd/react.production.min.js" crossorigin defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@18/umd/react-dom.production.min.js" crossorigin defer></script>
+  <style>html,body{height:100%}#root{min-height:100%}</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+  <div id="root">読み込み中...</div>
+  <script>
+  (function(){
+    function ready(){return typeof React!=='undefined'&&typeof ReactDOM!=='undefined';}
+    function start(){
+      const {useState,useMemo,useRef}=React;
+      const LS={
+        JOBS:'bridgework_jobs_v1',
+        OWNER:'bridgework_owner_company_v1',
+        MODE:'bridgework_mode_v1',
+        SEQ:'bridgework_role_seq_v1'
+      };
+      const TYPES={GINOU:'技能実習生',TOKUTEI:'特定技能',GIJIN:'技人国',RYU:'留学生'};
+      const FIELDS=['介護','ビルクリーニング','素形材産業','産業機械製造業','電気・電子情報関連産業','建設','造船・舶用工業','自動車整備','航空','宿泊','農業','漁業','飲食料品製造業','外食業','（15）その他','（16）その他'];
+      const SRC=['国内','国外'];
+      const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+
+      const loadJobs=()=>{try{const v=JSON.parse(localStorage.getItem(LS.JOBS));return Array.isArray(v)?v:[]}catch{return []}};
+      const saveJobs=j=>localStorage.setItem(LS.JOBS,JSON.stringify(Array.isArray(j)?j:[]));
+      const loadOwner=()=>localStorage.getItem(LS.OWNER)||'';
+      const saveOwner=o=>localStorage.setItem(LS.OWNER,o||'');
+      const loadSeq=()=>{try{const m=JSON.parse(localStorage.getItem(LS.SEQ));return m&&typeof m==='object'?m:{} }catch{return {}}};
+      const saveSeq=m=>localStorage.setItem(LS.SEQ,JSON.stringify(m&&typeof m==='object'?m:{}));
+
+      const Pill=({children})=>React.createElement('span',{className:'inline-flex items-center rounded-full border px-2 py-0.5 text-xs bg-white/70'},children);
+      const Section=({title,children,right})=>React.createElement('section',{className:'bg-white rounded-2xl shadow-sm border p-4 md:p-6'},React.createElement('div',{className:'flex flex-wrap justify-between mb-3 gap-3'},React.createElement('h2',{className:'text-lg font-semibold'},title),right),children);
+      function AttachList({items}){if(!items?.length)return null;return React.createElement('div',{className:'flex flex-wrap gap-2 mt-2'},items.map(a=>React.createElement('a',{key:a.id,href:a.href,target:'_blank',rel:'noreferrer',className:'text-sm underline break-all'},a.label)))}
+
+      function Filters({filters,setFilters}){
+        const set=(k,v)=>setFilters(p=>({...p,[k]:v}));
+        return React.createElement('div',{className:'grid md:grid-cols-4 gap-3'},
+          React.createElement('label',{className:'grid gap-1'},React.createElement('span',{className:'text-sm'},'区分'),React.createElement('select',{value:filters.type,onChange:e=>set('type',e.target.value),className:'border rounded-xl px-3 py-2'},React.createElement('option',{value:''},'すべて'),Object.values(TYPES).map(v=>React.createElement('option',{key:v,value:v},v)))),
+          React.createElement('label',{className:'grid gap-1'},React.createElement('span',{className:'text-sm'},'特定技能の分野'),React.createElement('select',{value:filters.field,onChange:e=>set('field',e.target.value),className:'border rounded-xl px-3 py-2',disabled:(filters.type&&filters.type!==TYPES.TOKUTEI)},React.createElement('option',{value:''},'すべて'),FIELDS.map(v=>React.createElement('option',{key:v,value:v},v)))),
+          React.createElement('label',{className:'grid gap-1'},React.createElement('span',{className:'text-sm'},'採用元'),React.createElement('select',{value:filters.src,onChange:e=>set('src',e.target.value),className:'border rounded-xl px-3 py-2'},React.createElement('option',{value:''},'すべて'),SRC.map(v=>React.createElement('option',{key:v,value:v},v)))),
+          React.createElement('label',{className:'grid gap-1'},React.createElement('span',{className:'text-sm'},'キーワード'),React.createElement('input',{value:filters.q,onChange:e=>set('q',e.target.value),placeholder:'タイトル/説明/会社名/職種/No...',className:'border rounded-xl px-3 py-2'}))
+        );
+      }
+
+      function JobForm({onAdd,defaultOwner}){
+        const [type,setType]=useState(TYPES.GINOU);const [field,setField]=useState(FIELDS[0]);const [src,setSrc]=useState(SRC[0]);
+        const [role,setRole]=useState('');
+        const [title,setTitle]=useState('');const [desc,setDesc]=useState('');const [owner,setOwner]=useState(defaultOwner||'');
+        const [url,setUrl]=useState('');const [files,setFiles]=useState([]);const ref=useRef(null);
+        const fileToDataURL=f=>new Promise(r=>{const rd=new FileReader();rd.onload=()=>r(rd.result);rd.readAsDataURL(f);});
+        const addFiles=async fs=>{const arr=Array.from(fs||[]),res=[];for(const f of arr){if(!/pdf|image/.test(f.type)){alert('PDF/画像のみ対応');continue;}res.push({id:uid(),label:f.name,href:await fileToDataURL(f)});}setFiles(p=>[...p,...res]);};
+
+        const issueRoleNo=(roleName)=>{
+          const key=(roleName||'').trim();
+          const map=loadSeq();
+          const next=(map[key]||0)+1;
+          map[key]=next; saveSeq(map);
+          return key? `${key}-${String(next).padStart(3,'0')}` : '';
+        };
+
+        const submit=e=>{
+          e.preventDefault();
+          if(!owner.trim())return alert('会社名を入力');
+          if(!title.trim())return alert('タイトル必須');
+          if(!role.trim())return alert('職種を入力');
+          const at=[]; if(url.trim())at.push({id:uid(),label:url,href:url}); files.forEach(x=>at.push(x));
+          const no=issueRoleNo(role);
+          onAdd({id:uid(),created:Date.now(),type,field:type===TYPES.TOKUTEI?field:null,src,role,no,title,desc,owner,attachments:at},owner);
+          setTitle('');setDesc('');setUrl('');setFiles([]);
+        };
+        return React.createElement('form',{onSubmit:submit,className:'grid gap-3'},
+          React.createElement('div',{className:'grid md:grid-cols-2 gap-3'},
+            React.createElement('label',{className:'grid'},React.createElement('span',null,'区分'),React.createElement('select',{value:type,onChange:e=>setType(e.target.value),className:'border rounded-xl px-3 py-2'},Object.values(TYPES).map(v=>React.createElement('option',{key:v},v)))),
+            type===TYPES.TOKUTEI&&React.createElement('label',{className:'grid'},React.createElement('span',null,'特定技能分野'),React.createElement('select',{value:field,onChange:e=>setField(e.target.value),className:'border rounded-xl px-3 py-2'},FIELDS.map(v=>React.createElement('option',{key:v},v)))),
+            React.createElement('label',{className:'grid'},React.createElement('span',null,'採用元'),React.createElement('select',{value:src,onChange:e=>setSrc(e.target.value),className:'border rounded-xl px-3 py-2'},SRC.map(v=>React.createElement('option',{key:v},v)))),
+            React.createElement('label',{className:'grid'},React.createElement('span',null,'求人所有会社名'),React.createElement('input',{value:owner,onChange:e=>setOwner(e.target.value),placeholder:'例：〇〇紹介会社',className:'border rounded-xl px-3 py-2 placeholder-slate-400'}))
+          ),
+          React.createElement('label',{className:'grid'},React.createElement('span',null,'職種'),React.createElement('input',{value:role,onChange:e=>setRole(e.target.value),placeholder:'例：介護職',className:'border rounded-xl px-3 py-2 placeholder-slate-400'})),
+          React.createElement('label',{className:'grid'},React.createElement('span',null,'タイトル'),React.createElement('input',{value:title,onChange:e=>setTitle(e.target.value),className:'border rounded-xl px-3 py-2'})),
+          React.createElement('label',{className:'grid'},React.createElement('span',null,'説明（任意）'),React.createElement('textarea',{value:desc,onChange:e=>setDesc(e.target.value),rows:3,className:'border rounded-xl px-3 py-2'})),
+          React.createElement('label',{className:'grid'},React.createElement('span',null,'URL'),React.createElement('input',{value:url,onChange:e=>setUrl(e.target.value),className:'border rounded-xl px-3 py-2'})),
+          React.createElement('label',{className:'grid'},React.createElement('span',null,'PDF/画像添付'),React.createElement('input',{type:'file',multiple:true,accept:'.pdf,image/*',ref:on=>ref.current=on,onChange:e=>addFiles(e.target.files)})),AttachList({items:files}),
+          React.createElement('button',{className:'px-4 py-2 bg-slate-900 text-white rounded-xl'},'登録')
+        );
+      }
+
+      function JobCard({job,onDelete}){
+        return React.createElement('div',{className:'border bg-white p-4 rounded-2xl shadow-sm'},
+          React.createElement('div',{className:'flex flex-wrap gap-2 mb-2'},
+            job.no&&React.createElement(Pill,null,'No: '+job.no),
+            job.role&&React.createElement(Pill,null,'職種:'+job.role),
+            React.createElement(Pill,null,job.type),
+            job.type==='特定技能'&&job.field&&React.createElement(Pill,null,job.field),
+            React.createElement(Pill,null,'採用元:'+job.src),
+            React.createElement(Pill,null,'会社:'+job.owner)
+          ),
+          React.createElement('h3',{className:'font-semibold'},job.title),
+          job.desc&&React.createElement('p',{className:'text-sm whitespace-pre-wrap'},job.desc),
+          AttachList({items:job.attachments}),
+          React.createElement('div',{className:'text-right mt-2'},React.createElement('button',{className:'text-sm border rounded px-2 py-1',onClick:()=>onDelete(job.id)},'削除'))
+        );
+      }
+
+      function DeletePanel({jobs,onDelete}){
+        const [company,setCompany]=useState('');
+        const arr=Array.isArray(jobs)?jobs:[];
+        const mine=useMemo(()=>arr.filter(j=>company&&j.owner===company),[arr,company]);
+        return Section({title:'削除（自社のみ）',children:React.createElement('div',{className:'grid gap-3'},React.createElement('input',{value:company,onChange:e=>setCompany(e.target.value),placeholder:'会社名入力',className:'border rounded-xl px-3 py-2'}),mine.length===0?React.createElement('p',{className:'text-sm text-slate-500'},'該当なし'):mine.map(j=>React.createElement(JobCard,{key:j.id,job:j,onDelete})) )});
+      }
+
+      function Landing({onPick}){
+        return React.createElement('div',{className:'max-w-lg mx-auto p-6 bg-white border rounded-2xl grid gap-4 text-center'},React.createElement('h2',{className:'text-xl font-semibold'},'モード選択'),React.createElement('div',{className:'grid grid-cols-2 gap-3'},React.createElement('button',{className:'px-4 py-3 bg-slate-900 text-white rounded-xl',onClick:()=>onPick('post')},'掲載'),React.createElement('button',{className:'px-4 py-3 border rounded-xl',onClick:()=>onPick('view')},'閲覧')));
+      }
+
+      function ViewGate({onAuthed}){
+        const [pw,setPw]=useState('');const [err,setErr]=useState('');
+        const sub=e=>{e.preventDefault();if(pw==='1416')onAuthed();else setErr('パスワードが違います');};
+        return React.createElement('form',{onSubmit:sub,className:'max-w-lg mx-auto p-6 bg-white border rounded-2xl grid gap-3 text-center'},React.createElement('h2',{className:'text-lg font-semibold'},'閲覧パスワード'),React.createElement('input',{type:'password',value:pw,onChange:e=>setPw(e.target.value),className:'border rounded-xl px-3 py-2'}),err&&React.createElement('p',{className:'text-red-600 text-sm'},err),React.createElement('button',{className:'px-4 py-2 bg-slate-900 text-white rounded-xl'},'認証'));
+      }
+
+      function FiltersSection({mode,filters,setFilters}){ if(mode!=='view') return null; return Section({title:'検索・絞り込み',children:React.createElement(Filters,{filters,setFilters})}); }
+
+      // 初期表示は必ずモード選択（Landing）から開始
+      function App(){
+        const [jobs,setJobs]=useState(loadJobs());
+        const [owner,setOwner]=useState(loadOwner());
+        const [mode,setMode]=useState('landing');
+        const [auth,setAuth]=useState(false);
+        const [filters,setFilters]=useState({type:'',field:'',src:'',q:''});
+        React.useEffect(()=>saveJobs(jobs),[jobs]);
+        const addJob=(j,o)=>{setJobs(p=>[j,...(Array.isArray(p)?p:[])]);if(o!==loadOwner()){saveOwner(o);setOwner(o);}};
+        const del=id=>setJobs(p=>(Array.isArray(p)?p:[]).filter(j=>j.id!==id));
+        const jlist=Array.isArray(jobs)?jobs:[];
+        const base=useMemo(()=>{ if(mode==='view') return jlist; if(owner) return jlist.filter(j=>j.owner===owner); return jlist; },[jlist,mode,owner]);
+        const visible=useMemo(()=>base.filter(j=>{ if(filters.type&&j.type!==filters.type) return false; if((filters.type===''||filters.type==='特定技能')&&filters.field){ if(j.type!=='特定技能') return false; if(j.field!==filters.field) return false; } if(filters.src&&j.src!==filters.src) return false; if(filters.q){ const q=filters.q.toLowerCase(); const t=[j.title,j.desc,j.owner,j.role,j.no].filter(Boolean).join('\n').toLowerCase(); if(!t.includes(q)) return false; } return true; }),[base,filters]);
+
+        if(mode==='landing')return React.createElement('div',{className:'max-w-6xl mx-auto p-6 grid gap-6'},React.createElement('header',null,React.createElement('h1',{className:'text-2xl font-bold'},'BridgeWork｜求人管理')),React.createElement(Landing,{onPick:m=>{setMode(m);}}));
+        if(mode==='view'&&!auth)return React.createElement(ViewGate,{onAuthed:()=>setAuth(true)});
+
+        return React.createElement('div',{className:'max-w-6xl mx-auto p-6 grid gap-6'},
+          React.createElement('header',{className:'flex justify-between items-center'},React.createElement('h1',{className:'text-2xl font-bold'},mode==='view'?'BridgeWork｜求人閲覧':'BridgeWork｜求人掲載'),React.createElement('button',{className:'text-sm border rounded px-2 py-1',onClick:()=>{setMode('landing');}},'← 戻る')),
+          React.createElement(FiltersSection,{mode,filters,setFilters}),
+          (mode==='post'&&Section({title:'新規登録',right:React.createElement(Pill,null,'URL / PDF / 写真 対応'),children:React.createElement(JobForm,{onAdd:addJob,defaultOwner:owner})})),
+          Section({title:'一覧',children: visible.length?React.createElement('div',{className:'grid gap-3'},visible.map(j=>React.createElement(JobCard,{key:j.id,job:j,onDelete:del}))):React.createElement('p',{className:'text-sm text-slate-500'},'該当する求人がありません。')}),
+          Section({title:'削除（自社のみ）',children:React.createElement(DeletePanel,{jobs:jlist,onDelete:del})})
+        );
+      }
+
+      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    }
+    (function wait(i=0){ if(ready()){start();return;} if(i>200) return; setTimeout(()=>wait(i+1), 30); })();
+  })();
+  </script>
+</body>
+</html>
